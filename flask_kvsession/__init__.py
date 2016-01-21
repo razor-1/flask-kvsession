@@ -97,7 +97,10 @@ class KVSession(CallbackDict, SessionMixin):
             del self[k]
 
         if getattr(self, 'sid_s', None):
-            current_app.kvsession_store.delete(self.sid_s)
+            try:
+                current_app.kvsession_store.delete(self.sid_s)
+            except Exception:
+                return
             self.sid_s = None
 
         self.modified = False
@@ -115,7 +118,10 @@ class KVSession(CallbackDict, SessionMixin):
 
         if getattr(self, 'sid_s', None):
             # delete old session
-            current_app.kvsession_store.delete(self.sid_s)
+            try:
+                current_app.kvsession_store.delete(self.sid_s)
+            except Exception:
+                return
 
             # remove sid_s, set modified
             self.sid_s = None
@@ -155,7 +161,7 @@ class KVSessionInterface(SessionInterface):
                     s = self.session_class(self.serialization_method.loads(
                         current_app.kvsession_store.get(sid_s)))
                     s.sid_s = sid_s
-                except (BadSignature, KeyError):
+                except (BadSignature, KeyError, Exception):
                     # either the cookie was manipulated or we did not find the
                     # session in the backend.
                     pass
@@ -180,12 +186,16 @@ class KVSessionInterface(SessionInterface):
             data = self.serialization_method.dumps(dict(session))
             store = current_app.kvsession_store
 
-            if getattr(store, 'ttl_support', False):
-                # TTL is supported
-                ttl = current_app.permanent_session_lifetime.total_seconds()
-                store.put(session.sid_s, data, ttl)
-            else:
-                store.put(session.sid_s, data)
+            try:
+                if getattr(store, 'ttl_support', False):
+                    # TTL is supported
+                    ttl = current_app.permanent_session_lifetime.total_seconds()
+                    store.put(session.sid_s, data, ttl)
+                else:
+                    store.put(session.sid_s, data)
+            except Exception:
+                # unable to save the session
+                return
 
             session.new = False
             session.modified = False
@@ -247,7 +257,10 @@ class KVSessionExtension(object):
 
                 # remove if expired
                 if sid.has_expired(app.permanent_session_lifetime, now):
-                    app.kvsession_store.delete(key)
+                    try:
+                        app.kvsession_store.delete(key)
+                    except Exception:
+                        pass
 
     def init_app(self, app, session_kvstore=None):
         """Initialize application and KVSession.
